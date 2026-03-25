@@ -14,13 +14,14 @@ const DataService = (() => {
      FIREBASE CONFIG  — replace with your own
   ────────────────────────────────────────── */
   const FB_CFG = {
-    apiKey            : 'YOUR_API_KEY',
-    authDomain        : 'YOUR_PROJECT.firebaseapp.com',
-    databaseURL       : 'https://YOUR_PROJECT-default-rtdb.firebaseio.com',
-    projectId         : 'YOUR_PROJECT',
-    storageBucket     : 'YOUR_PROJECT.appspot.com',
-    messagingSenderId : 'YOUR_SENDER_ID',
-    appId             : 'YOUR_APP_ID',
+    apiKey: "AIzaSyBNiz1nn8PDXqlJCPZW6sLofH2V4Ooq-U0",
+    authDomain: "digital-attendance-d9df0.firebaseapp.com",
+    databaseURL: "https://digital-attendance-d9df0-default-rtdb.firebaseio.com",
+    projectId: "digital-attendance-d9df0",
+    storageBucket: "digital-attendance-d9df0.firebasestorage.app",
+    messagingSenderId: "503903357856",
+    appId: "1:503903357856:web:f4b6d56f73f90bfab2f2c5",
+    measurementId: "G-1WSZFNGPHV"
   };
 
   /* ──────────────────────────────────────────
