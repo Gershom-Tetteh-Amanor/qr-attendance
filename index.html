@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="description" content="Smart QR code attendance tracking for universities"/>
+  <title>QR Attendance System</title>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#4f46e5"/>
+
+  <!-- Fonts + Styles -->
+  <link rel="stylesheet" href="frontend/css/styles.css"/>
+
+  <!-- Firebase (optional — for cross-device) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <!-- QR + Excel libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<!-- ════════════════════════════════════
+     SYSTEM BARS
+═════════════════════════════════════ -->
+<div class="status-bar" id="offline-bar">⚠ You are offline — changes will sync when you reconnect</div>
+<div class="status-bar demo" id="demo-bar">🧪 Demo mode — data is stored in this browser only. Add Firebase config for cross-device sync.</div>
+
+<!-- ════════════════════════════════════
+     LANDING
+═════════════════════════════════════ -->
+<div class="view active" id="view-landing">
+  <div class="landing-hero">
+    <div style="display:flex;justify-content:flex-end;padding:0 0 12px">
+      <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+    </div>
+    <div class="landing-logo">🎓</div>
+    <h1 class="landing-title">QR Attendance System</h1>
+    <p class="landing-sub">Smart, real-time attendance tracking with QR codes — built for universities.</p>
+    <div class="landing-btns">
+      <button class="btn btn-primary" onclick="goTo('admin-login')">🔐 Admin Portal</button>
+      <button class="btn btn-secondary" onclick="goTo('lec-login')">👨‍🏫 Lecturer Sign In</button>
+      <button class="btn btn-ghost" onclick="goTo('stu-scan')">🎒 Student Check-In</button>
+    </div>
+  </div>
+  <div class="landing-section">
+    <h2 style="text-align:center;margin-bottom:6px">How it works</h2>
+    <p class="sub" style="text-align:center">Three roles, one seamless flow.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📍</div>
+        <div class="feature-title">Location Fencing</div>
+        <div class="feature-desc">Students must be within a set radius of the classroom to check in.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📱</div>
+        <div class="feature-title">QR Check-In</div>
+        <div class="feature-desc">Students scan a QR code with their phone camera — no app needed.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛡️</div>
+        <div class="feature-title">Anti-Fraud</div>
+        <div class="feature-desc">Device fingerprinting and student ID deduplication prevent proxy check-ins.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <div class="feature-title">Export Data</div>
+        <div class="feature-desc">Download attendance as Excel or CSV for each session or across all courses.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     LECTURER LOGIN
+═════════════════════════════════════ -->
+<div class="view center" id="view-lec-login">
+  <div class="card">
+    <div class="card-logo">👨‍🏫</div>
+    <div class="card-title">Lecturer Sign In</div>
+    <div class="card-sub">Sign in to start a session and generate QR codes</div>
+    <div class="alert" id="ll-alert"></div>
+    <div class="field">
+      <label>Email address</label>
+      <input type="email" id="ll-email" placeholder="you@university.edu" autocomplete="email"
+             onkeydown="if(event.key==='Enter')lecLogin()"/>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="ll-pass" placeholder="Password" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')lecLogin()"/>
+        <button class="eye-btn" onclick="Utils.tgEye('ll-pass',this)" tabindex="-1">👁</button>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="ll-btn" onclick="lecLogin()">Sign in</button>
+    <div class="card-link">No account? <a onclick="goTo('lec-signup')">Register with your Unique ID</a></div>
+    <div class="card-link"><a onclick="goTo('landing')">← Back</a></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     LECTURER SIGNUP
+═════════════════════════════════════ -->
+<div class="view center" id="view-lec-signup">
+  <div class="card" style="max-width:500px">
+    <div class="card-logo">🔑</div>
+    <div class="card-title">Lecturer Registration</div>
+    <div class="card-sub">Enter the Unique ID your admin assigned you, then complete your profile</div>
+    <div class="alert" id="ls-alert"></div>
+    <div class="field">
+      <label>Unique Lecturer ID <span style="color:var(--danger);font-size:10px">— issued by admin</span></label>
+      <input type="text" id="ls-uid" placeholder="e.g. LEC-X4K2M9P7QR"
+             oninput="this.value=this.value.toUpperCase()" style="font-family:monospace;letter-spacing:.06em;font-size:15px"/>
+    </div>
+    <div class="tc">
+      <div class="field">
+        <label>Full name</label>
+        <input type="text" id="ls-name" placeholder="Dr. Ama Mensah" autocomplete="name"/>
+      </div>
+      <div class="field">
+        <label>Department</label>
+        <input type="text" id="ls-dept" placeholder="Statistics"/>
+      </div>
+    </div>
+    <div class="tc">
+      <div class="field">
+        <label>Institution</label>
+        <input type="text" id="ls-inst" placeholder="University of Ghana"/>
+      </div>
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="ls-email" placeholder="you@university.edu" autocomplete="email"/>
+      </div>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="ls-pass" placeholder="Min 8 characters" autocomplete="new-password"/>
+        <button class="eye-btn" onclick="Utils.tgEye('ls-pass',this)" tabindex="-1">👁</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Confirm password</label>
+      <input type="password" id="ls-pass2" placeholder="Repeat password" autocomplete="new-password"/>
+    </div>
+    <button class="btn btn-primary" id="ls-btn" onclick="lecSignup()">Create account</button>
+    <div class="card-link">Already registered? <a onclick="goTo('lec-login')">Sign in</a></div>
+    <div class="card-link"><a onclick="goTo('landing')">← Back</a></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     LECTURER DASHBOARD
+═════════════════════════════════════ -->
+<div class="view" id="view-lecturer">
+  <div class="topbar">
+    <span class="tb-icon">👨‍🏫</span>
+    <span class="tb-title">Lecturer Dashboard</span>
+    <span class="rpill lec">Lecturer</span>
+    <span class="tb-user" id="lec-tb-name"></span>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+    <button class="tb-btn" onclick="lecLogout()">Sign out</button>
+  </div>
+  <div class="tabs">
+    <div class="tab active" id="lec-tab-session" onclick="lecTab('session')">Session</div>
+    <div class="tab" id="lec-tab-records" onclick="lecTab('records')">My Records</div>
+    <div class="tab" id="lec-tab-reports" onclick="lecTab('reports')">Reports</div>
+  </div>
+
+  <!-- SESSION TAB -->
+  <div class="tab-page active" id="lec-pg-session">
+    <div class="pg">
+      <div id="lec-setup">
+        <h2>Create a session</h2>
+        <p class="sub">Get your classroom GPS first — this sets the attendance fence. Then generate the QR code.</p>
+        <div class="lecid-box">
+          <div>
+            <div class="li-lbl">Your Lecturer ID</div>
+            <div class="li-val" id="lecid-val">—</div>
+          </div>
+          <span style="font-size:10px;opacity:.6;text-align:right">Unique ID<br/>auto-assigned</span>
+        </div>
+        <div class="tc">
+          <div class="field">
+            <label>Course code</label>
+            <input type="text" id="l-code" placeholder="MATH101" oninput="this.value=this.value.toUpperCase()"/>
+          </div>
+          <div class="field">
+            <label>Course name</label>
+            <input type="text" id="l-course" placeholder="Mathematics"/>
+          </div>
+        </div>
+        <div class="field">
+          <label>Lecturer name</label>
+          <input type="text" id="l-lecname" readonly/>
+        </div>
+        <div class="sl-row">
+          <label>Duration</label>
+          <input type="range" id="l-dur" min="5" max="120" value="60"
+                 oninput="Q('l-dur-val').textContent=fmtDur(+this.value)"/>
+          <span class="sv" id="l-dur-val">60 min</span>
+        </div>
+
+        <div class="loc-step">
+          <h3>📍 Step 1 — Get classroom location</h3>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:10px">Required every session — sets the attendance fence students must be within.</p>
+          <div class="sl-row" style="margin-bottom:10px">
+            <label>Fence radius</label>
+            <input type="range" id="l-radius" min="20" max="500" value="100"
+                   oninput="Q('l-rad-val').textContent=this.value+'m'"/>
+            <span class="sv" id="l-rad-val">100m</span>
+          </div>
+          <button class="btn btn-teal" id="get-loc-btn" onclick="getLecLoc()">📍 Get my current location</button>
+          <div class="loc-result" id="loc-result">
+            <div class="loc-dot" id="loc-dot"></div>
+            <span id="loc-text"></span>
+          </div>
+        </div>
+
+        <div class="tog-wrap" onclick="toggleLoc()">
+          <div class="tog on" id="loc-tog"><div class="tok"></div></div>
+          <label id="loc-lbl">Location fence enabled</label>
+        </div>
+
+        <button class="btn btn-primary" id="gen-btn" onclick="startSession()" disabled>
+          Step 2 — Generate QR code
+        </button>
+        <p style="font-size:11px;color:var(--text4);margin-top:6px;text-align:center" id="gen-hint">
+          Get your classroom location first to unlock this button.
+        </p>
+      </div><!-- /lec-setup -->
+
+      <div id="lec-active" style="display:none">
+        <h2>Session active</h2>
+        <p class="sub">Show the QR to your students — check-ins appear here in real time.</p>
+        <div class="strip purple">
+          <strong id="l-si-code"></strong> — <span id="l-si-course"></span><br/>
+          Lecturer: <strong id="l-si-lec"></strong> &nbsp;·&nbsp; Date: <strong id="l-si-date"></strong><br/>
+          Lecturer ID: <strong id="l-si-lecid"></strong> &nbsp;·&nbsp;
+          Session: <strong id="l-si-id"></strong> &nbsp;·&nbsp; <strong id="l-si-dur"></strong>
+          <div class="sec-pills" id="sec-pills"></div>
+        </div>
+        <div id="l-loc-card" class="strip teal">
+          <strong id="l-lfc-title">Location fence</strong>
+          <div style="font-size:11px;font-family:monospace;color:var(--teal);margin-top:2px" id="l-lfc-detail"></div>
+        </div>
+        <div class="qr-wrap">
+          <div id="qr-box"></div>
+          <div class="qr-btns">
+            <button class="btn btn-secondary btn-sm" onclick="downloadQR()">⬇ Download QR</button>
+          </div>
+          <div class="countdown ok" id="l-cd">—</div>
+          <p style="font-size:11px;color:var(--text3);margin-top:6px">Students scan with their phone camera — no app needed</p>
+        </div>
+        <div class="list-hdr">
+          <h3>Present students</h3>
+          <span class="badge" id="l-att-count">0</span>
+        </div>
+        <div id="l-att-list"><div class="att-empty" style="color:var(--text3);font-size:13px;padding:20px 0;text-align:center">Waiting for students…</div></div>
+        <div style="margin-top:10px">
+          <button class="btn btn-secondary btn-sm" id="csv-btn" style="display:none"
+                  onclick="exportSessionCSV(A.session.id)">⬇ Export CSV</button>
+        </div>
+        <div id="l-blk-wrap" style="display:none">
+          <hr class="divider"/>
+          <div class="list-hdr">
+            <h3 style="color:var(--danger)">Blocked attempts</h3>
+            <span class="badge-red" id="l-blk-count">0</span>
+          </div>
+          <div id="l-blk-list"></div>
+        </div>
+        <hr class="divider"/>
+        <button class="btn btn-danger" onclick="endSession()">End session &amp; save records</button>
+      </div><!-- /lec-active -->
+    </div>
+  </div><!-- /lec-pg-session -->
+
+  <!-- RECORDS TAB -->
+  <div class="tab-page" id="lec-pg-records">
+    <div class="pg">
+      <h2>My past sessions</h2>
+      <p class="sub">Admin backup is always preserved even if you clear records here.</p>
+      <div id="records-list"><div class="no-rec">No completed sessions yet.</div></div>
+    </div>
+  </div>
+
+  <!-- REPORTS TAB -->
+  <div class="tab-page" id="lec-pg-reports">
+    <div class="pg">
+      <h2>Course reports</h2>
+      <p class="sub">Attendance grouped by course.</p>
+      <div id="combined-list"><div class="no-rec">No sessions yet.</div></div>
+    </div>
+  </div>
+</div><!-- /view-lecturer -->
+
+<!-- ════════════════════════════════════
+     ADMIN LOGIN
+     ─ First visit: super admin setup (once only)
+     ─ After setup: simple email/password login
+     ─ NO "Super Admin" label is ever shown
+═════════════════════════════════════ -->
+<div class="view center" id="view-admin-login">
+  <div class="card">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:4px">
+      <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+    </div>
+    <div class="card-logo">🔐</div>
+    <div class="card-title" id="al-title">Admin Portal</div>
+    <div class="card-sub"   id="al-sub">Sign in to manage your institution</div>
+    <div class="alert" id="al-alert"></div>
+
+    <!-- FIRST-TIME SETUP (hidden once super admin exists — never shown again) -->
+    <div id="sadm-setup" style="display:none">
+      <div class="strip amber">
+        <strong>First-time setup:</strong> Create the administrator account. This form appears only once.
+      </div>
+      <div class="field">
+        <label>Your full name</label>
+        <input type="text" id="sa-name" placeholder="Admin name" autocomplete="name"/>
+      </div>
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="sa-email" placeholder="admin@example.com" autocomplete="email"/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="pw-wrap">
+          <input type="password" id="sa-pass" placeholder="Min 8 characters" autocomplete="new-password"/>
+          <button class="eye-btn" onclick="Utils.tgEye('sa-pass',this)" tabindex="-1">👁</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Confirm password</label>
+        <input type="password" id="sa-pass2" placeholder="Repeat password" autocomplete="new-password"/>
+      </div>
+      <button class="btn btn-primary" id="sa-btn" onclick="setupSuperAdmin()">Create admin account</button>
+    </div>
+
+    <!-- NORMAL LOGIN (shown once super admin is created — shared by admin + co-admins) -->
+    <div id="sadm-login" style="display:none">
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="al-email" placeholder="admin@example.com" autocomplete="email"
+               onkeydown="if(event.key==='Enter')adminLogin()"/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="pw-wrap">
+          <input type="password" id="al-pass" placeholder="Password" autocomplete="current-password"
+                 onkeydown="if(event.key==='Enter')adminLogin()"/>
+          <button class="eye-btn" onclick="Utils.tgEye('al-pass',this)" tabindex="-1">👁</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="al-login-btn" onclick="adminLogin()">Sign in</button>
+      <div class="card-link" style="margin-top:14px">
+        Not an admin yet? <a onclick="goTo('cadm-signup')">Apply for co-admin access</a>
+      </div>
+    </div>
+
+    <div class="card-link" style="margin-top:13px">
+      <a onclick="goTo('landing')">← Back to landing</a>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     CO-ADMIN APPLICATION
+═════════════════════════════════════ -->
+<div class="view center" id="view-cadm-signup">
+  <div class="card" style="max-width:500px">
+    <div class="card-logo">🤝</div>
+    <div class="card-title">Co-Admin Application</div>
+    <div class="card-sub">Apply for co-admin access — the administrator will approve or reject your request</div>
+    <div class="alert" id="cs-alert"></div>
+    <div class="tc">
+      <div class="field">
+        <label>Full name</label>
+        <input type="text" id="cs-name" placeholder="Your name" autocomplete="name"/>
+      </div>
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="cs-email" placeholder="email@uni.edu" autocomplete="email"/>
+      </div>
+    </div>
+    <div class="tc">
+      <div class="field">
+        <label>Institution</label>
+        <input type="text" id="cs-inst" placeholder="University name"/>
+      </div>
+      <div class="field">
+        <label>Department</label>
+        <input type="text" id="cs-dept" placeholder="Department name"/>
+      </div>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="cs-pass" placeholder="Min 8 characters" autocomplete="new-password"/>
+        <button class="eye-btn" onclick="Utils.tgEye('cs-pass',this)" tabindex="-1">👁</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Confirm password</label>
+      <input type="password" id="cs-pass2" placeholder="Repeat password" autocomplete="new-password"/>
+    </div>
+    <div class="strip amber" style="font-size:12px;margin-bottom:14px">
+      Your application will be reviewed by the administrator. You can sign in once approved.
+    </div>
+    <button class="btn btn-primary" id="cs-btn" onclick="coAdminApply()">Submit application</button>
+    <div class="card-link">Already approved? <a onclick="goTo('admin-login')">Sign in</a></div>
+    <div class="card-link"><a onclick="goTo('landing')">← Back</a></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     SUPER ADMIN DASHBOARD
+═════════════════════════════════════ -->
+<div class="view" id="view-sadmin">
+  <div class="topbar">
+    <span class="tb-icon">🔐</span>
+    <span class="tb-title">Admin Dashboard</span>
+    <span class="rpill sad">Administrator</span>
+    <span class="tb-user" id="sadm-name-tb"></span>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+    <button class="tb-btn" onclick="adminLogout()">Sign out</button>
+  </div>
+  <div class="tabs">
+    <div class="tab active" id="sadm-tab-ids"       onclick="sTab('ids')">Assign IDs</div>
+    <div class="tab"        id="sadm-tab-lecturers"  onclick="sTab('lecturers')">Lecturers</div>
+    <div class="tab"        id="sadm-tab-sessions"   onclick="sTab('sessions')">Sessions</div>
+    <div class="tab"        id="sadm-tab-database"   onclick="sTab('database')">Database</div>
+    <div class="tab"        id="sadm-tab-coadmins"   onclick="sTab('coadmins')">Co-Admins</div>
+    <div class="tab"        id="sadm-tab-settings"   onclick="sTab('settings')">Settings</div>
+  </div>
+
+  <!-- IDs TAB -->
+  <div class="tab-page active" id="sadm-pg-ids"><div class="pg">
+    <h2>Assign Lecturer IDs</h2>
+    <p class="sub">Generate unique IDs and distribute them to lecturers. They use these to register.</p>
+    <div class="inner-panel">
+      <h3>Generate new ID</h3>
+      <div class="tc" style="margin-top:10px">
+        <div class="field">
+          <label>Intended for (lecturer name)</label>
+          <input type="text" id="uid-for" placeholder="Lecturer name"/>
+        </div>
+        <div class="field">
+          <label>Department (optional)</label>
+          <input type="text" id="uid-dept" placeholder="Department"/>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="generateUID()">Generate ID</button>
+      <div id="uid-result" style="display:none;margin-top:14px">
+        <div class="uid-box">
+          <div class="uid-lbl">Unique Lecturer ID — send this to the lecturer</div>
+          <div class="uid-val" id="uid-val"></div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="copyUID()" style="margin-top:9px">📋 Copy ID</button>
+      </div>
+    </div>
+    <div class="list-hdr">
+      <h3>All issued IDs</h3>
+      <span class="badge" id="uid-count">0</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+      <select id="uid-filter" onchange="A.uidPg=0;renderUIDs()" style="padding:7px 10px;font-size:12px;width:auto;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:6px">
+        <option value="all">All statuses</option>
+        <option value="available">Available</option>
+        <option value="assigned">Assigned</option>
+        <option value="revoked">Revoked</option>
+      </select>
+      <span style="font-size:12px;color:var(--text3)" id="uid-pg-sum"></span>
+    </div>
+    <div id="uid-list"></div>
+    <div class="pg-controls">
+      <button class="btn btn-secondary btn-sm" id="uid-prev" onclick="uidPage(-1)" disabled>← Prev</button>
+      <span id="uid-pg-info" style="font-size:12px"></span>
+      <button class="btn btn-secondary btn-sm" id="uid-next" onclick="uidPage(1)">Next →</button>
+    </div>
+  </div></div>
+
+  <!-- LECTURERS TAB -->
+  <div class="tab-page" id="sadm-pg-lecturers"><div class="pg">
+    <h2>All lecturers</h2>
+    <p class="sub">All registered lecturers across all institutions.</p>
+    <div id="sadm-lec-list"><div class="no-rec">No lecturers registered yet.</div></div>
+  </div></div>
+
+  <!-- SESSIONS TAB -->
+  <div class="tab-page" id="sadm-pg-sessions"><div class="pg">
+    <h2>All sessions</h2>
+    <p class="sub">Every session across all lecturers and institutions.</p>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <select id="s-inst-f" onchange="renderSAdmSess()" style="padding:7px 10px;font-size:12px;width:auto;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:6px">
+        <option value="all">All institutions</option>
+      </select>
+      <select id="s-lec-f" onchange="renderSAdmSess()" style="padding:7px 10px;font-size:12px;width:auto;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:6px">
+        <option value="all">All lecturers</option>
+      </select>
+    </div>
+    <div id="sadm-sess-list"><div class="no-rec">No sessions yet.</div></div>
+  </div></div>
+
+  <!-- DATABASE TAB -->
+  <div class="tab-page" id="sadm-pg-database"><div class="pg">
+    <h2>Overall attendance database</h2>
+    <p class="sub">All attendance records across all institutions, grouped by course.</p>
+    <div id="sadm-db-list"><div class="no-rec">No data yet.</div></div>
+  </div></div>
+
+  <!-- CO-ADMINS TAB -->
+  <div class="tab-page" id="sadm-pg-coadmins"><div class="pg">
+    <h2>Co-admin management</h2>
+    <p class="sub">Approve applications and manage co-admin access. Co-admins only see their department's data.</p>
+    <div id="pending-section" style="display:none">
+      <div class="strip amber"><strong>⏳ Pending applications — review below:</strong></div>
+      <div id="pending-list"></div>
+      <hr class="divider"/>
+    </div>
+    <div class="list-hdr"><h3>Active co-admins</h3></div>
+    <div id="sadm-ca-list"><div class="no-rec">No co-admins yet.</div></div>
+  </div></div>
+
+  <!-- SETTINGS TAB -->
+  <div class="tab-page" id="sadm-pg-settings"><div class="pg">
+    <h2>Settings</h2>
+    <p class="sub">System overview and account management.</p>
+    <div class="strip gray" id="sadm-stats"></div>
+    <div class="inner-panel">
+      <h3>Appearance</h3>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+        <button class="btn btn-secondary btn-sm" onclick="setTheme('light')">☀️ Light mode</button>
+        <button class="btn btn-secondary btn-sm" onclick="setTheme('dark')">🌙 Dark mode</button>
+      </div>
+    </div>
+    <div class="inner-panel">
+      <h3>Change password</h3>
+      <div class="alert" id="spw-err"></div>
+      <div class="alert" id="spw-ok"></div>
+      <div class="field" style="margin-top:10px">
+        <label>Current password</label>
+        <input type="password" id="spw-cur" placeholder="Current password"/>
+      </div>
+      <div class="field">
+        <label>New password</label>
+        <input type="password" id="spw-new" placeholder="Min 8 characters"/>
+      </div>
+      <div class="field">
+        <label>Confirm new password</label>
+        <input type="password" id="spw-new2" placeholder="Repeat new password"/>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="changeSAdmPw()">Update password</button>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--danger-b);border-radius:var(--radius);padding:18px 20px">
+      <h3 style="color:var(--danger)">Danger zone</h3>
+      <p style="font-size:13px;color:var(--text3);margin:8px 0 14px;line-height:1.6">Permanently deletes all lecturer accounts, sessions and UIDs. The admin account is kept.</p>
+      <button class="btn btn-danger btn-sm" onclick="resetAll()">Reset all data</button>
+    </div>
+  </div></div>
+</div><!-- /view-sadmin -->
+
+<!-- ════════════════════════════════════
+     CO-ADMIN DASHBOARD
+═════════════════════════════════════ -->
+<div class="view" id="view-cadmin">
+  <div class="topbar">
+    <span class="tb-icon">🤝</span>
+    <span class="tb-title">Co-Admin Dashboard</span>
+    <span class="rpill cad">Co-Admin</span>
+    <span class="tb-user" id="cadm-tb-name"></span>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+    <button class="tb-btn" onclick="adminLogout()">Sign out</button>
+  </div>
+  <div class="tabs">
+    <div class="tab active" id="cadm-tab-ids"       onclick="cTab('ids')">Assign IDs</div>
+    <div class="tab"        id="cadm-tab-lecturers"  onclick="cTab('lecturers')">Lecturers</div>
+    <div class="tab"        id="cadm-tab-sessions"   onclick="cTab('sessions')">Sessions</div>
+    <div class="tab"        id="cadm-tab-database"   onclick="cTab('database')">Database</div>
+  </div>
+
+  <div class="tab-page active" id="cadm-pg-ids"><div class="pg">
+    <h2>Assign Lecturer IDs</h2>
+    <p class="sub">Generate unique IDs for lecturers in <strong id="cadm-dept-lbl"></strong>.</p>
+    <div class="inner-panel">
+      <h3>Generate ID</h3>
+      <div class="field" style="margin-top:10px">
+        <label>Intended for (lecturer name)</label>
+        <input type="text" id="cadm-uid-for" placeholder="Lecturer name"/>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="cAdminGenerateUID()">Generate ID</button>
+      <div id="cadm-uid-result" style="display:none;margin-top:12px">
+        <div class="uid-box">
+          <div class="uid-lbl">Unique Lecturer ID — send to lecturer</div>
+          <div class="uid-val" id="cadm-uid-val"></div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="cAdminCopyUID()" style="margin-top:9px">📋 Copy</button>
+      </div>
+    </div>
+    <div class="list-hdr"><h3>IDs you have issued</h3><span class="badge" id="cadm-uid-count">0</span></div>
+    <div id="cadm-uid-list"><div class="no-rec">No IDs issued yet.</div></div>
+  </div></div>
+
+  <div class="tab-page" id="cadm-pg-lecturers"><div class="pg">
+    <h2>Lecturers in your department</h2>
+    <p class="sub">Only lecturers from your institution and department are shown.</p>
+    <div id="cadm-lec-list"><div class="no-rec">No lecturers in your department yet.</div></div>
+  </div></div>
+
+  <div class="tab-page" id="cadm-pg-sessions"><div class="pg">
+    <h2>Sessions in your department</h2>
+    <p class="sub">Sessions from lecturers in your institution and department only.</p>
+    <div id="cadm-sess-list"><div class="no-rec">No sessions yet.</div></div>
+  </div></div>
+
+  <div class="tab-page" id="cadm-pg-database"><div class="pg">
+    <h2>Department attendance database</h2>
+    <p class="sub">All attendance records for your department, grouped by course and lecturer.</p>
+    <div id="cadm-db-list"><div class="no-rec">No data yet.</div></div>
+  </div></div>
+</div><!-- /view-cadmin -->
+
+<!-- ════════════════════════════════════
+     STUDENT — SCAN PROMPT
+═════════════════════════════════════ -->
+<div class="view" id="view-stu-scan">
+  <div class="topbar">
+    <span class="tb-icon">🎒</span>
+    <span class="tb-title">Student Check-in</span>
+    <span class="rpill stu">Student</span>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+  </div>
+  <div class="pg" style="text-align:center;padding-top:52px">
+    <div style="font-size:56px;margin-bottom:12px">📷</div>
+    <h2>Scan the QR code</h2>
+    <p class="sub" style="margin-top:6px">Your lecturer must start a session. Scan the QR code they display.</p>
+    <div class="info-card" style="text-align:left;margin-top:10px">
+      <p style="font-weight:600;margin-bottom:8px;font-size:14px">How it works</p>
+      <ul>
+        <li>Lecturer starts a session and shows the QR code on screen</li>
+        <li>Point your phone camera at it — no app needed</li>
+        <li>Enter your name and student ID to sign in</li>
+        <li>Your check-in appears instantly on the lecturer's screen</li>
+      </ul>
+    </div>
+    <div style="margin-top:24px">
+      <a onclick="goTo('landing')" style="color:var(--primary);cursor:pointer;font-size:13px">← Back to home</a>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     STUDENT — CHECK-IN FORM
+     (loaded via ?ci= URL parameter)
+═════════════════════════════════════ -->
+<div class="view" id="view-stu-checkin">
+  <div class="topbar">
+    <span class="tb-icon">🎒</span>
+    <span class="tb-title">Student Check-in</span>
+    <span class="rpill stu">Student</span>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+  </div>
+  <div class="pg">
+
+    <!-- Loading -->
+    <div class="stu-state show" id="stu-loading">
+      <div class="stu-icon"><span class="spin" style="width:40px;height:40px;border-width:3px;border-top-color:var(--primary);"></span></div>
+      <div class="stu-h">Loading session…</div>
+    </div>
+
+    <!-- Invalid -->
+    <div class="stu-state" id="stu-invalid">
+      <div class="stu-icon">❌</div>
+      <div class="stu-h" id="inv-title">Invalid QR</div>
+      <div class="stu-msg" id="inv-msg">This QR code could not be read.</div>
+    </div>
+
+    <!-- Done -->
+    <div class="stu-state" id="stu-done">
+      <div class="stu-icon">✅</div>
+      <div class="stu-h">You're signed in!</div>
+      <div class="stu-msg" id="done-msg">Your attendance has been recorded.</div>
+    </div>
+
+    <!-- Form -->
+    <div id="stu-form" style="display:none">
+      <div class="strip purple">
+        Course: <strong id="s-code"></strong> — <span id="s-course"></span><br/>
+        Date: <strong id="s-date"></strong>
+        <div class="countdown ok" id="s-cd">—</div>
+      </div>
+      <div class="alert" id="res-ok"></div>
+      <div class="alert err" id="res-err"></div>
+      <div class="field">
+        <label>Full name</label>
+        <input type="text" id="s-name" placeholder="Your full name" autocomplete="name"/>
+      </div>
+      <div class="field">
+        <label>Student ID</label>
+        <input type="text" id="s-sid" placeholder="e.g. 10987654" autocomplete="off"
+               oninput="this.value=this.value.toUpperCase()"/>
+      </div>
+      <div id="loc-btn-row" class="loc-btn-row" style="display:none;margin-bottom:12px">
+        <button class="btn btn-teal" onclick="getStudentLoc()" style="flex:1">📍 Get my location</button>
+      </div>
+      <div id="no-loc-row" style="margin-bottom:12px">
+        <div class="loc-status idle" id="ls-box">
+          <span id="ls-text">Location not required</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="ci-btn" onclick="checkIn()">Check in</button>
+      <p style="font-size:11px;color:var(--text4);margin-top:8px;text-align:center">
+        Device ID: <span id="s-fp" style="font-family:monospace"></span>
+      </p>
+    </div>
+  </div>
+</div><!-- /view-stu-checkin -->
+
+<!-- ════════════════════════════════════
+     BACKEND SERVICES  (load order matters)
+     1. AuthService  — identity + session tokens
+     2. DataService  — data access layer (uses AuthService)
+     3. Middleware   — guards + sanitisation (uses AuthService)
+     4. Utils        — helpers + modal/toast system (uses Middleware)
+     5. app.js       — UI controller (uses all of the above)
+═════════════════════════════════════ -->
+<script src="backend/auth/AuthService.js"></script>
+<script src="backend/db/DataService.js"></script>
+<script src="backend/middleware/Middleware.js"></script>
+<script src="backend/utils/Utils.js"></script>
+<script src="frontend/js/app.js"></script>
+
+</body>
+</html>
